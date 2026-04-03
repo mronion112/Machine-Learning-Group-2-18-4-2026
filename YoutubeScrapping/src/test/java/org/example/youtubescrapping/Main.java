@@ -5,14 +5,25 @@ import com.microsoft.playwright.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Array;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class Main {
 
-    public static Set listUsedUrl = new HashSet<>();
+    public static Set<String> listUsedUrl = ConcurrentHashMap.newKeySet();
+    public static String coookieFile = "Cookie.json";
 
     public static HashMap<String, String> queryListChannel(String nameGame, int numberChannel) throws IOException, InterruptedException {
-            // channel  channelUrl
+        String delimiter = "###";
+
+        // channel  channelUrl
         HashMap<String,String> listChannel = new HashMap<>();
         HashSet<String> seenUrl = new HashSet<>();
         ProcessBuilder  builder = new ProcessBuilder();
@@ -21,8 +32,10 @@ public class Main {
                 "ytsearch"+numberChannel *10 +":" + nameGame,
                 "--flat-playlist",
                 "--lazy-playlist",
-                "--print", "%(channel)s|%(channel_url)s",
+                "--print", "%(channel)s"+delimiter+"%(channel_url)s",
                 "--no-warnings"
+//                "--cookies",
+//                coookieFile
         );
 
         builder.redirectErrorStream(true);
@@ -37,7 +50,7 @@ public class Main {
             if(line.length() < 2){
                 continue;
             }
-            String[] data = line.split("\\|",2);
+            String[] data = line.split(delimiter,2);
             String channelName = data[0].trim();
             String channelUrl = data[1].trim();
 
@@ -66,15 +79,11 @@ public class Main {
         return  listChannel;
 
     }
-//    yt-dlp "urlVideo" \
-//            --print "%(view_count)s|%(comment_count)s|%(like_count)s"
-//
 
-//    yt-dlp "urlChannel"  --print "%(channel)s|%(epoch)s|%(playlist_count)s|%(channel_follower_count)s"
-//    yt-dlp "ytsearch10:nameChannel nameGame" --skip-download --print "%(uploader)s|%(title)s|%(webpage_url)"
+    public static ArrayList<String> getListVideosChannel(String nameChannel, String nameGame) throws IOException, InterruptedException {
+        ArrayList<String> listVideoChannel = new ArrayList<>();
 
-    public static HashMap<String, String> getListVideosChannel(String nameChannel, String nameGame) throws IOException, InterruptedException {
-        HashMap<String, String> listVideoChannel = new HashMap<>();
+        String delimiter = "###";
 
         ProcessBuilder builder = new ProcessBuilder();
         builder.command(
@@ -82,8 +91,12 @@ public class Main {
                 "ytsearch10:" + nameChannel + " " + nameGame,
                 "--flat-playlist",
                 "--skip-download",
-                "--print", "%(uploader)s|%(title)s|%(webpage_url)s",
+                "--print",
+//                |%(title)s|
+                "%(uploader)s"+delimiter+"%(webpage_url)s",
                 "--no-warnings"
+//                "--cookies",
+//                coookieFile
         );
 
         builder.redirectErrorStream(true);
@@ -95,12 +108,26 @@ public class Main {
             if (line.length() < 2) {
                 continue;
             }
-            String[] datas = line.split("\\|");
+            String[] datas = line.split(delimiter, 2);
 
-            if (!datas[0].equals(nameChannel)) {
+            if (datas.length < 2) {
+                System.out.println("SKIP listDataVideo method line : " + line);
+                continue;
+            }
+
+            if (!datas[0].equals(nameChannel) ) {
                 break;
-            } else {
-                listVideoChannel.put(datas[1], datas[2]);
+
+            }
+
+            if(listUsedUrl.contains(datas[1])){
+                System.out.println("SKIP Already Exist : " + datas[0] + " | " + datas[1]);
+            }
+
+            else {
+                listVideoChannel.add(datas[1]);
+                listUsedUrl.add(datas[1]);
+                System.out.println("ADD: " + datas[0] + " | " + datas[1] );
             }
         }
 
@@ -112,103 +139,259 @@ public class Main {
 //            --print "%(view_count)s|%(comment_count)s|%(like_count)s"
 //
 
-    public static Video getDataVideo(String urlVideo) throws IOException {
-        ProcessBuilder builder = new ProcessBuilder();
-        builder.command(
-                "yt-dlp", urlVideo,
-                "--print",
-                "%(view_count)s|%(comment_count)s|%(like_count)s",
-                "--no-warnings"
-        );
-        builder.redirectErrorStream(true);
-
-        Process process = builder.start();
-
-        BufferedReader rb = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String line = rb.readLine();
-
-        String[] datas = line.split("\\|");
-        return new Video(datas[0].trim(), datas[1].trim(), datas[2].trim());
-//        return new Video();
-
-
-
-    }
 
     //    yt-dlp "urlChannel"  --print "%(channel)s|%(epoch)s|%(playlist_count)s|%(channel_follower_count)s"
 
 
+
+
+
+//    x1      Channel Follower Count
+//    x2      Epoch
+//    x3      Total Videos
+//    x8      Avg view 10 videos of channel
+//    x9      Avg view 10 videos of channel
+//    x10      Avg like 10 videos of channel
+//    x11     Avg comment 10 videos of channel
+//    x12     Avg Duration 10 videos of Channel
+//    x13     Frequency
+//    x14     isChannelVerify
+
+    private static int safeParse(String value) {
+        if (value == null || value.equalsIgnoreCase("NA") || value.equalsIgnoreCase("None")) return 0;
+        try {
+            return Integer.parseInt(value.trim().replaceAll("[^0-9]", ""));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static String getVideoCount(String url) throws IOException {
+        ProcessBuilder builder = new ProcessBuilder(
+                "yt-dlp",
+                "--flat-playlist",
+                "--print", "%(id)s",
+                url
+//                "--cookies",
+//                coookieFile
+        );
+
+        builder.redirectErrorStream(true);
+        Process process = builder.start();
+
+        Set<String> ids = new HashSet<>();
+        String line;
+
+        try (BufferedReader rb = new BufferedReader(
+                new InputStreamReader(process.getInputStream()))) {
+
+            while ((line = rb.readLine()) != null) {
+                ids.add(line);
+            }
+        }
+
+        return String.valueOf(ids.size());
+    }
+
     public static Channel getDataChannel(String urlChannel, ArrayList<Video> listVideos) throws IOException, InterruptedException {
+        long nowTime = Instant.now().getEpochSecond();
+
+        String delimiter = "###";
 
         ProcessBuilder builder = new ProcessBuilder();
         builder.command(
                 "yt-dlp", urlChannel,
-                "--print",
-                "%(channel)s|%(epoch)s|%(playlist_count)s|%(channel_follower_count)s",
+                "--playlist-end", "10",
+                "--print", "%(channel)s" + delimiter + "%(epoch)s" + delimiter + "%(channel_is_verified)s" + delimiter +
+                        "%(channel_follower_count)s" + delimiter + "%(title)s" + delimiter + "%(view_count)s" + delimiter +
+                        "%(comment_count)s" + delimiter + "%(like_count)s" + delimiter + "%(duration)s" + delimiter + "%(timestamp)s",
                 "--no-warnings"
+//                "--cookies",
+//                coookieFile
         );
-        builder.redirectErrorStream(true);
 
+        builder.redirectErrorStream(true);
         Process process = builder.start();
 
-        BufferedReader rb = new BufferedReader(new InputStreamReader(process.getInputStream()));
-        String line = rb.readLine();
-        process.destroy();
-        System.out.println(line);
-        String[] datas = line.split("\\|");
+        String channelName = "", epoch = "", isChannelVerify = "", followerCount = "";
+        long totalView = 0, totalLike = 0, totalComment = 0, totalDuration = 0;
+        long lastVideoTs = 0;
+        int actualCount = 0;
 
-        return new Channel(datas[0], datas[1], datas[2], datas[3], listVideos);
+        try (BufferedReader rb = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = rb.readLine()) != null) {
+                System.out.println(line);
+                String[] datas = line.split(delimiter);
+                if (datas.length < 10) {
+                    System.err.println("[WARN] Unexpected line from getDataChannel: " + line);
+                }
 
+                if (actualCount == 0) {
+                    channelName = datas[0];
+                    epoch = datas[1];
+                    isChannelVerify = datas[2];
+                    followerCount = datas[3];
+                }
 
+                totalView += safeParse(datas[5]);
+                totalComment += safeParse(datas[6]);
+                totalLike += safeParse(datas[7]);
+                totalDuration += safeParse(datas[8]);
 
-    }
+                if (actualCount == 9) {
+                    lastVideoTs = safeParse(datas[9]);
+                }
 
-    public static HashMap<String, String> sumUpProcess(String nameChannel, String nameGame) throws IOException, InterruptedException {
-              //title   urlVideo
-        HashMap<String, String> listVideoInChannel = new HashMap();
-
-//        HashMap<String, String> listChannelVideo = getVideoChannel(nameChannel, nameGame);
-
-        //          title     urlVideo
-        for(Map.Entry<String, String> nameVideo  : getVideosChannel(nameChannel, nameGame).entrySet()){
-            if(!listUsedUrl.contains(nameVideo.getValue())){
-                System.out.println("ADD: " + nameChannel + " | " + nameVideo.getKey() + " | " + nameVideo.getValue());
-                listVideoInChannel.put(nameVideo.getKey(), nameVideo.getValue());
-                listUsedUrl.add(nameVideo.getValue());
-            }
-            else{
-                System.out.println("SKIP: " + nameChannel + " | " + nameVideo + "had already existed");
+                actualCount++;
             }
         }
 
-        System.out.println("Channel " + nameChannel + " has " + listVideoInChannel.size() + " videos");
+        int divisor = (actualCount == 0) ? 1 : actualCount;
 
-        return listVideoInChannel;
+        String avgView = String.valueOf(totalView / divisor);
+        String avgLike = String.valueOf(totalLike / divisor);
+        String avgComment = String.valueOf(totalComment / divisor);
+        String avgDuration = String.valueOf(totalDuration / divisor);
 
+        String frequency = (lastVideoTs == 0) ? "0" : String.valueOf(nowTime - lastVideoTs);
+
+        isChannelVerify = isChannelVerify.trim().equals("True") ? "0" : "1";
+        String playListCount = getVideoCount(urlChannel);
+        return new Channel(channelName, epoch, followerCount, playListCount,
+                avgView, avgLike, avgComment, avgDuration, frequency, isChannelVerify, listVideos);
     }
 
+
+    // channel | epoch | playlist_count ! channel_follower_count ||| view_count | comment_count | like_count
+
+//    Biến    Ý nghĩa
+//
+//    x1      Channel Follower Count
+//    x2      Epoch
+//    x3      Total Videos
+
+//    x4      Avg view
+//    x5      Avg Comment
+//    x6      Avg like
+//    x7      Avg Duration
+//    x8      timestampCheckContentFresh
+
+//    x9      Avg view 10 videos of channel
+//    x10      Avg like 10 videos of channel
+//    x11     Avg comment 10 videos of channel
+//    x12     Avg Duration 10 videos of Channel
+//    x13     Frequency
+//    x14     isChannelVerify
+
+
+
+
+    public static ArrayList<Video> getListDataVideo(ArrayList<String> listUrlVideo) throws IOException {
+    ArrayList<Video> listVideo = new ArrayList<>();
+    String delimiter = "###";
+
+    List<String> command = new ArrayList<>(List.of(
+            "yt-dlp",
+            "--print", "%(title)s"+delimiter+"%(view_count)s"+delimiter+"%(comment_count)s"+delimiter+"%(like_count)s"+delimiter+"%(duration)s"+delimiter+"%(timestamp)s",
+            "--no-warnings"
+//            "--cookies",
+//            coookieFile
+    ));
+    command.addAll(listUrlVideo);
+
+    ProcessBuilder builder = new ProcessBuilder(command);
+    builder.redirectErrorStream(true);
+    Process process = builder.start();
+
+    BufferedReader rb = new BufferedReader(new InputStreamReader(process.getInputStream()));
+    String line;
+    while ((line = rb.readLine()) != null) {
+        if (line.length() < 2) continue;
+        String[] datas = line.split(delimiter, 6);
+
+        if (datas.length < 6) {
+            System.out.println("SKIP getListDataVideo line: " + line);
+            continue;
+        }
+        listVideo.add(new Video(datas[0], datas[1], datas[2], datas[3], datas[4], datas[5]));
+    }
+    return listVideo;
+}
 
 
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-//        String nameGame = "Undertale";
-//        HashMap<String, String> listChannel =  queryListChannel(nameGame, 20);
-//
-//        System.out.println("Size : " + listChannel.size());
-//
-//        for(Map.Entry<String, String> nameVideo : listChannel.entrySet()){
-//            getDataChannel(nameVideo.getKey(), nameGame);
-//        }
+        String nameGame = "Resident Evil 9";
+        HashMap<String, String> listChannel = queryListChannel(nameGame, 50);
 
-        Video video1 = getDataVideo("https://www.youtube.com/watch?v=hgSdNAGP4VI");
-        Video video2 = getDataVideo("youtube.com/watch?v=F4QavPTT77k ");
+        int count = 1;
+        int limit = listChannel.size();
+        AtomicInteger totalViews = new AtomicInteger(0);
+        AtomicInteger totalLikes = new AtomicInteger(0);
+        AtomicInteger totalComments = new AtomicInteger(0);
+        AtomicInteger totalDuration = new AtomicInteger(0);
 
-        ArrayList<Video> listVideos = new ArrayList<>();
-        listVideos.add(video1);
-        listVideos.add(video2);
+        AtomicInteger totalVideos = new AtomicInteger(0);
 
-        System.out.println(getDataChannel("https://www.youtube.com/channel/UCg7ha0OQC6Jn3MZKO807R9Q", listVideos));
+
+        System.out.println("Scrapping " + listChannel.size() + " channels : " + listChannel.keySet());
+
+        ExecutorService executor = Executors.newFixedThreadPool(12);
+        List<CompletableFuture<Channel>> futures = new ArrayList<>();
+
+        for (Map.Entry<String, String> channel : listChannel.entrySet()) {
+            System.out.println(count + "/" + limit + " : " + channel.getKey() + " | " + channel.getValue());
+
+            CompletableFuture<Channel> future = CompletableFuture.supplyAsync(() -> {
+                try {
+                    ArrayList<String> listVideoChannel = getListVideosChannel(channel.getKey(), nameGame);
+                    System.out.println("Scrapping Channel : " + channel.getKey() + "\n" + listVideoChannel);
+
+                    ArrayList<Video> listDataVideos = getListDataVideo(listVideoChannel);
+                    listDataVideos.forEach(video -> {
+                        totalViews.addAndGet(safeParse(video.getView_count()));
+                        totalLikes.addAndGet(safeParse(video.getLike_count()));
+                        totalDuration.addAndGet(safeParse(video.getDuration()));
+                        totalComments.addAndGet(safeParse(video.getComment_count()));
+                    });
+                    totalVideos.addAndGet(listDataVideos.size());
+                    return getDataChannel(channel.getValue(), listDataVideos);
+
+                } catch (Exception e) {
+                    System.err.println("ERROR : " + channel.getKey() + " " + e.getMessage());
+                    return null;
+                }
+            }, executor);
+
+            futures.add(future);
+            count++;
+        }
+
+        ArrayList<Channel> listChannels = futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        executor.shutdown();
+
+        listChannels.forEach(System.out::println);
+
+
+        System.out.println("Total Views : " + totalViews.get() +
+                "\nTotal Like : " + totalLikes.get() +
+                "\nTotal Comment : " + totalComments.get() +
+                "\nTotal Duration : " + totalDuration.get() +
+                "\nTotal Videos : " + totalVideos.get());
+
+        System.out.println("Avg View : " + totalViews.get() / totalVideos.get() +
+                "\tAvg Like : " + totalLikes.get() / totalVideos.get() +
+                "\tAvg Comment : " + totalComments.get() / totalVideos.get() +
+                "\tAvg Duration : " + totalDuration.get() / totalVideos.get()
+                );
     }
+
+
 
 }
