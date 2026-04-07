@@ -6,7 +6,7 @@
 
 ## The system is divided into two main components: ##
 
-### 1. YouTube Scraping Tool `Java` using `Yt-dlp` and `Youtube API V3`###
+### 1. YouTube Scraping Tool `Java` using `Yt-dlp` and `Youtube API V3` ###
 
 - A Java-based tool that collects and processes data from YouTube.
 
@@ -36,7 +36,7 @@ Extracts and converts data into structured features for prediction
 
 - #### Feature : A machine learning module that predicts video views based on collected data.
 
-- #### Technologies Used
+- #### Libraries Used
         Pandas: Used for reading and processing .csv data files
         NumPy: Supports mathematical operations and matrix computations
         Scikit-learn: Provides machine learning models and utilities
