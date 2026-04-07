@@ -25,13 +25,12 @@ Extracts and converts data into structured features for prediction
     x5	Average comments
     x6	Average likes
     x7	Average video duration
-    x8	Content freshness timestamp
-    x9	Avg views (last 10 videos)
-    x10	Avg likes (last 10 videos)
-    x11	Avg comments (last 10 videos)
-    x12	Avg duration (last 10 videos)
-    x13	Upload frequency
-    x14	Channel verification status
+    x10	Avg views (last 10 videos)
+    x11	Avg likes (last 10 videos)
+    x12	Avg comments (last 10 videos)
+    x13	Avg duration (last 10 videos)
+    x14	Upload frequency
+    x15	Channel verification status
 ### 2. AI Prediction Model `Python`
 
 - #### Feature : A machine learning module that predicts video views based on collected data.
