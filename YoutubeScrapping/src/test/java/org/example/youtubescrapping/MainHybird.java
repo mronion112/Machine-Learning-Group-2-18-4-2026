@@ -19,21 +19,21 @@ public class MainHybird {
 //    x2      Epoch
 //    x3      Total Videos
 
-//    x4      Avg view
-//    x5      Avg Comment
-//    x6      Avg like
-//    x7      Avg Duration
-//    x8      timestampCheckContentFresh
+//    x4      predict_view
+//    x5      predict_like
+//    x6      predict_comment
 
-//    x9      Avg view 10 videos of channel
-//    x10      Avg like 10 videos of channel
-//    x11     Avg comment 10 videos of channel
-//    x12     Avg Duration 10 videos of Channel
-//    x13     Frequency
-//    x14     isChannelVerify
+//    x7      Avg view 10 videos of channel
+//    x8      Avg like 10 videos of channel
+//    x9     Avg comment 10 videos of channel
+//    x10     Avg Duration 10 videos of Channel
+//    x11     Frequency
+//    x12     isChannelVerify
 
     private static final String API_KEY  = "";
     private static final String BASE_URL = "https://www.googleapis.com/youtube/v3";
+    private static final Long timeNow = Instant.now().getEpochSecond();
+
 
     private static final HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -46,13 +46,15 @@ public class MainHybird {
         String delimiter = "###";
         HashMap<String, String> listChannel = new HashMap<>();
         HashSet<String> seenUrl = new HashSet<>();
+        String nameGameEncoded = nameGame.replace(" ", "+");
+        String searchUrl = "https://www.youtube.com/results?search_query=" + nameGameEncoded + "channel&sp=EgIQAg%3D%3D";
 
         ProcessBuilder builder = new ProcessBuilder(
                 "yt-dlp",
-                "ytsearch" + numberChannel * 10 + ":" + nameGame,
+                searchUrl,
                 "--flat-playlist",
-                "--lazy-playlist",
                 "--print", "%(channel)s" + delimiter + "%(channel_url)s",
+                "--playlist-items", "1:" + numberChannel*10,
                 "--no-warnings"
         );
         builder.redirectErrorStream(false);
@@ -104,8 +106,8 @@ public class MainHybird {
                 searchUrl,
                 "--flat-playlist",
                 "--playlist-end", "10",
-//                "--sleep-interval",     "1",
-//                "--max-sleep-interval", "3",
+                "--sleep-interval",     "3",
+                "--max-sleep-interval", "5",
                 "--print", "%(webpage_url)s",
                 "--no-warnings"
         );
@@ -178,12 +180,16 @@ public class MainHybird {
                 String viewCount = strSafe(stats,"viewCount");
                 String likeCount = strSafe(stats,"likeCount");
                 String commentCount = strSafe(stats,"commentCount");
-                String duration = String.valueOf(parseDuration(strSafe(details, "duration")));
+//                String duration = String.valueOf(parseDuration(strSafe(details, "duration")));
                 String timestamp = String.valueOf(
                         parsePublishedAt(strSafe(snippet, "publishedAt")));
 
+//                timestamp = String.valueOf(timeNow - Long.parseLong(timestamp));
+
                 listVideo.add(new Video(title, viewCount, commentCount,
-                        likeCount, duration, timestamp));
+                        likeCount,
+//                        duration,
+                        timestamp));
                 System.out.println("  [video] " + title
                         + " | views=" + viewCount + " | likes=" + likeCount);
             }
@@ -196,7 +202,7 @@ public class MainHybird {
     public static Channel getDataChannel(String channelUrl, ArrayList<Video> listVideos)
             throws IOException, InterruptedException {
 
-        long nowTime = Instant.now().getEpochSecond();
+//        long nowTime = Instant.now().getEpochSecond();
 
         String channelId = resolveChannelId(channelUrl);
         if (channelId == null) {
@@ -225,7 +231,11 @@ public class MainHybird {
         JsonObject status  = ch.getAsJsonObject("status");
 
         String channelName   = strSafe(snippet, "title");
-        String epoch         = String.valueOf(nowTime);
+        String publishedAtRaw = strSafe(snippet, "publishedAt"); // Định dạng ISO 8601 (VD: 2015-05-20T12:00:00Z)
+        long publishedAtEpoch = parsePublishedAt(publishedAtRaw);
+
+    // Tính "Tuổi của kênh" tính bằng giây từ lúc lập đến thời điểm hiện tại
+        String epoch = String.valueOf(timeNow - publishedAtEpoch);
         String followerCount = strSafe(stats, "subscriberCount");
         String videoCount    = strSafe(stats, "videoCount");
 
@@ -238,20 +248,22 @@ public class MainHybird {
         String isVerify = longUploadStatus.equals("allowed") ? "1" : "0";
 
         // ── avgViewContentChannel: avg view các video content này trong kênh ─────
-        long totalView = 0, totalLike = 0, totalComment = 0, totalDuration = 0;
+        long totalView = 0, totalLike = 0, totalComment = 0;
+//                totalDuration = 0;
 
         for (Video v : listVideos) {
             totalView     += safeParse(v.getView_count());
             totalLike     += safeParse(v.getLike_count());
             totalComment  += safeParse(v.getComment_count());
-            totalDuration += safeParse(v.getDuration());
+//            totalDuration += safeParse(v.getDuration());
         }
 
         int divisor = listVideos.isEmpty() ? 1 : listVideos.size();
         String avgViewContentChannel = String.valueOf(totalView    / divisor); // avg view content này
         String avgLike               = String.valueOf(totalLike    / divisor);
         String avgComment            = String.valueOf(totalComment / divisor);
-        String avgDuration           = String.valueOf(totalDuration/ divisor);
+//        String avgDuration           = String.valueOf(totalDuration/ divisor);
+
 
         List<Long> timestamps = listVideos.stream()
                 .map(v -> (long) safeParse(v.getTimestamp()))
@@ -276,7 +288,8 @@ public class MainHybird {
                 + " | avgView=" + avgViewContentChannel);
 
         return new Channel(channelName, epoch, followerCount, videoCount,
-                avgViewContentChannel, avgLike, avgComment, avgDuration,
+                avgViewContentChannel, avgLike, avgComment,
+//                avgDuration,
                 frequency, isVerify, listVideos, avgViewContentChannel);
     }
 
@@ -286,12 +299,38 @@ public class MainHybird {
                                     List<String>  avgData) {
         try (FileWriter writer = new FileWriter(nameFile)) {
             writer.append("channel,epoch,followers,video_count,"
-                    + "avg10View,avg10Like,avg10Comment,avg10Duration,"
-                    + "frequency,isVerify,"
-                    + "avgView,avgLikes,avgComments,avgDuration,view\n");
+                                                        //avg10Duration,
+                    + "avg10View,avg10Like,avg10Comment,"
+                    + "frequency,isVerify,"                     //avgDuration
+                    + "predict_view,predict_like,predict_comment,view\n");
+
 
             for (Channel c : listChannel) {
+                System.out.println(c);
+                String predict_view = "";
+                String predict_like = "";
+                String predict_comment = "";
 
+                try {
+                    predict_view = String.valueOf(Long.parseLong(avgData.get(0)) * Long.parseLong(c.getAvgView10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+                    predict_like = String.valueOf(Long.parseLong(avgData.get(1)) * Long.parseLong(c.getAvgLike10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+                    predict_comment = String.valueOf(Long.parseLong(avgData.get(2)) * Long.parseLong(c.getAvgComment10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+//                String predicted_duration = String.valueOf(Long.parseLong(avgData.get(3)) * Long.parseLong(c.getAvgDuration10Videos())/Long.parseLong(c.getChannel_follower_count()));
+                }
+                catch (NumberFormatException e) {
+                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                    continue;
+                }
+                catch (ArithmeticException e){
+                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                    continue;
+
+                }
+                catch (Exception e){
+                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                    continue;
+
+                }
                 writer.append(csvEscape(c.channel)).append(",")
                         .append(c.epoch).append(",")
                         .append(c.channel_follower_count).append(",")
@@ -299,13 +338,16 @@ public class MainHybird {
                         .append(c.avgView10Videos).append(",")
                         .append(c.avgLike10Videos).append(",")
                         .append(c.avgComment10Videos).append(",")
-                        .append(c.avgDuration10Videos).append(",")
+//                        .append(c.avgDuration10Videos).append(",")
                         .append(c.freequency).append(",")
                         .append(c.isChannelVerify).append(",")
-                        .append(avgData.get(0)).append(",")
-                        .append(avgData.get(1)).append(",")
-                        .append(avgData.get(2)).append(",")
-                        .append(avgData.get(3)).append(",")
+//                        .append(avgData.get(0)).append(",")
+//                        .append(avgData.get(1)).append(",")
+//                        .append(avgData.get(2)).append(",")
+//                        .append(avgData.get(3)).append(",")
+                        .append(predict_view).append(",")
+                        .append(predict_like).append(",")
+                        .append(predict_comment).append(",")
                         .append(c.avgViewContentChannel).append("\n");
             }
 
@@ -417,20 +459,19 @@ public class MainHybird {
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        String nameGame    = "Review Phim";
+        String nameGame    = "Genshin impact";
         String nameFile    = nameGame + ".csv";
-        int    numChannels = 150;
+        int    numChannels = 200;
 
         HashMap<String, String> channelMap = queryListChannel(nameGame, numChannels);
         System.out.println("Scraping " + channelMap.size() + " channels...");
 
-        AtomicInteger totalViews    = new AtomicInteger(0);
-        AtomicInteger totalLikes    = new AtomicInteger(0);
-        AtomicInteger totalComments = new AtomicInteger(0);
-        AtomicInteger totalDuration = new AtomicInteger(0);
+        AtomicLong totalViews    = new AtomicLong(0);
+        AtomicLong totalLikes    = new AtomicLong(0);
+        AtomicLong totalComments = new AtomicLong(0);
+//        AtomicInteger totalDuration = new AtomicInteger(0);
         AtomicInteger totalVideos   = new AtomicInteger(0);
 
-        // 12 threads: yt-dlp subprocess + API call song song
         ExecutorService executor = Executors.newFixedThreadPool(12);
         List<CompletableFuture<Channel>> futures = new ArrayList<>();
 
@@ -454,7 +495,7 @@ public class MainHybird {
                         totalViews.addAndGet(safeParse(v.getView_count()));
                         totalLikes.addAndGet(safeParse(v.getLike_count()));
                         totalComments.addAndGet(safeParse(v.getComment_count()));
-                        totalDuration.addAndGet(safeParse(v.getDuration()));
+//                        totalDuration.addAndGet(safeParse(v.getDuration()));
                     });
                     totalVideos.addAndGet(videos.size());
 
@@ -481,12 +522,14 @@ public class MainHybird {
         List<String> avgData = List.of(
                 String.valueOf(totalViews.get()    / total),
                 String.valueOf(totalLikes.get()    / total),
-                String.valueOf(totalComments.get() / total),
-                String.valueOf(totalDuration.get() / total)
+                String.valueOf(totalComments.get() / total)
+//                String.valueOf(totalDuration.get() / total)
         );
 
-        System.out.printf("%nAvg: views=%s likes=%s comments=%s duration=%s%n",
-                avgData.get(0), avgData.get(1), avgData.get(2), avgData.get(3));
+        System.out.printf("%nAvg: views=%s likes=%s comments=%s ",
+//                        "duration=%s%n",
+                avgData.get(0), avgData.get(1), avgData.get(2));
+//                avgData.get(3));
 
         writeFileCSV(nameFile, listChannels, avgData);
     }
