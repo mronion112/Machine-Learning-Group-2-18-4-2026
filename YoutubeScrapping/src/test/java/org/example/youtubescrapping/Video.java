@@ -13,15 +13,17 @@ public class Video {
     private String view_count;
     private String comment_count;
     private String like_count;
-    private String duration;
+//    private String duration;
     private String timestamp;
 
-    public Video(String title, String view_count, String comment_count, String like_count, String duration, String timestamp) {
+    public Video(String title, String view_count, String comment_count, String like_count,
+//                 String duration,
+                 String timestamp) {
         this.title = title;
         this.view_count = view_count;
         this.comment_count = comment_count;
         this.like_count = like_count;
-        this.duration = duration;
+//        this.duration = duration;
         this.timestamp = timestamp;
     }
 
@@ -57,15 +59,15 @@ public class Video {
         this.like_count = like_count;
     }
 
-    public String getDuration() {
-        return duration;
-    }
+//    public String getDuration() {
+//        return duration;
+//    }
+//
+//    public void setDuration(String duration) {
+//        this.duration = duration;
+//    }
 
-    public void setDuration(String duration) {
-        this.duration = duration;
-    }
-
-    public String gettimestamp() {
+    public String getTimestamp() {
         return timestamp;
     }
 
@@ -80,7 +82,7 @@ public class Video {
                 ", view_count='" + view_count + '\'' +
                 ", comment_count='" + comment_count + '\'' +
                 ", like_count='" + like_count + '\'' +
-                ", duration='" + duration + '\'' +
+//                ", duration='" + duration + '\'' +
                 ", timestamp='" +  + '\'' +
                 '}';
     }

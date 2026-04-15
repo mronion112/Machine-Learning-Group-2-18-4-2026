@@ -5,6 +5,7 @@ import com.google.gson.*;
 import java.io.*;
 import java.net.*;
 import java.net.http.*;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -30,7 +31,24 @@ public class MainHybird {
 //    x11     Frequency
 //    x12     isChannelVerify
 
-    private static final String API_KEY  = "AIzaSyDxslhbqPIIOcapBi6qBG5yc8Ar4GSDI5E";
+
+    private static String getApiKey() throws IOException {
+        BufferedReader rd = new BufferedReader(new FileReader("Key.txt"));
+        String apiKey = rd.readLine().trim();
+        return apiKey;
+    }
+
+
+    private static final String API_KEY;
+
+    static {
+        try {
+            API_KEY = getApiKey();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static final String BASE_URL = "https://www.googleapis.com/youtube/v3";
     private static final Long timeNow = Instant.now().getEpochSecond();
 
@@ -40,14 +58,14 @@ public class MainHybird {
     public static Set<String> listUsedUrl = ConcurrentHashMap.newKeySet();
 
 
-    public static HashMap<String, String> queryListChannel(String nameGame, int numberChannel)
+    public static HashMap<String, String> queryListChannel(String nameContent, int numberChannel)
             throws IOException, InterruptedException {
 
         String delimiter = "###";
         HashMap<String, String> listChannel = new HashMap<>();
         HashSet<String> seenUrl = new HashSet<>();
-        String nameGameEncoded = nameGame.replace(" ", "+");
-        String searchUrl = "https://www.youtube.com/results?search_query=channel+" + nameGameEncoded + "&sp=EgIQAg%3D%3D";
+        String nameContentEncoded = nameContent.replace(" ", "+");
+        String searchUrl = "https://www.youtube.com/results?search_query=channel+" + nameContentEncoded + "&sp=EgIQAg%3D%3D";
 
         ProcessBuilder builder = new ProcessBuilder(
                 "yt-dlp",
@@ -92,14 +110,14 @@ public class MainHybird {
     }
 
 
-    public static ArrayList<String> getListVideosChannel(String channelUrl, String nameGame)
+    public static ArrayList<String> getListVideosChannel(String channelUrl, String nameContent)
             throws IOException, InterruptedException {
 
         ArrayList<String> listVideoUrls = new ArrayList<>();
 
-        // Tìm video theo keyword trong đúng kênh đó
-        String searchUrl = channelUrl + "/search?query="
-                + URLEncoder.encode(nameGame, "UTF-8");
+        //search video by keyword nameChannel
+        String searchUrl = channelUrl + "/search?query=" + nameContent;
+//                + URLEncoder.encode(nameContent, StandardCharsets.UTF_8);
 
         ProcessBuilder builder = new ProcessBuilder(
                 "yt-dlp",
@@ -132,20 +150,20 @@ public class MainHybird {
 
         int exitCode = process.waitFor();
         if (listVideoUrls.isEmpty()) {
-            System.err.println("[WARN] getListVideosChannel empty: "
+            System.err.println("[ERROR] getListVideosChannel empty: "
                     + channelUrl + " (exit=" + exitCode + ")");
         }
 
         return listVideoUrls;
     }
 
-    // Youtube API V3 : 1 quota (max 50 IDs)
+    // Youtube API V3 : 1 quota (max 50 video)
     public static ArrayList<Video> getListDataVideo(ArrayList<String> videoUrls)
             throws IOException, InterruptedException {
 
         ArrayList<Video> listVideo = new ArrayList<>();
         if (videoUrls.isEmpty()) {
-            System.err.println("[WARN] getListDataVideo: empty list");
+            System.err.println("[ERROR] getListDataVideo: empty list");
             return listVideo;
         }
 
@@ -155,7 +173,7 @@ public class MainHybird {
                 .collect(Collectors.toList());
 
         if (videoIds.isEmpty()) {
-            System.err.println("[WARN] getListDataVideo: list ID video is Empty");
+            System.err.println("[ERROR] getListDataVideo: list ID video is Empty");
             return listVideo;
         }
 
@@ -174,21 +192,17 @@ public class MainHybird {
                 JsonObject obj = el.getAsJsonObject();
                 JsonObject snippet = obj.getAsJsonObject("snippet");
                 JsonObject stats = obj.getAsJsonObject("statistics");
-                JsonObject details = obj.getAsJsonObject("contentDetails");
 
                 String title = strSafe(snippet,"title");
                 String viewCount = strSafe(stats,"viewCount");
                 String likeCount = strSafe(stats,"likeCount");
                 String commentCount = strSafe(stats,"commentCount");
-//                String duration = String.valueOf(parseDuration(strSafe(details, "duration")));
                 String timestamp = String.valueOf(
                         parsePublishedAt(strSafe(snippet, "publishedAt")));
 
-//                timestamp = String.valueOf(timeNow - Long.parseLong(timestamp));
 
                 listVideo.add(new Video(title, viewCount, commentCount,
                         likeCount,
-//                        duration,
                         timestamp));
                 System.out.println("  [video] " + title
                         + " | views=" + viewCount + " | likes=" + likeCount);
@@ -202,16 +216,15 @@ public class MainHybird {
     public static Channel getDataChannel(String channelUrl, ArrayList<Video> listVideos)
             throws IOException, InterruptedException {
 
-//        long nowTime = Instant.now().getEpochSecond();
 
         String channelId = resolveChannelId(channelUrl);
         if (channelId == null) {
-            System.err.println("[WARN] Cannot resolve channelId: " + channelUrl);
+            System.err.println("[ERROR] Cannot resolve channelId: " + channelUrl);
             return null;
         }
 
-        // ── Gọi API: thêm "brandingSettings" để lấy isVerify ────────────────────
-        // Quota: vẫn 1 unit, chỉ thêm part
+        //  API: add "brandingSettings" get isVerify
+        // Quota: 1
         String url = BASE_URL + "/channels"
                 + "?part=snippet,statistics,status"
                 + "&id="  + channelId
@@ -221,61 +234,51 @@ public class MainHybird {
         JsonArray  items = json.getAsJsonArray("items");
 
         if (items == null || items.isEmpty()) {
-            System.err.println("[WARN] getDataChannel: no data for " + channelId);
+            System.err.println("[ERROR] getDataChannel: no data for " + channelId);
             return null;
         }
 
         JsonObject ch      = items.get(0).getAsJsonObject();
         JsonObject snippet = ch.getAsJsonObject("snippet");
         JsonObject stats   = ch.getAsJsonObject("statistics");
-        JsonObject status  = ch.getAsJsonObject("status");
 
         String channelName   = strSafe(snippet, "title");
-        String publishedAtRaw = strSafe(snippet, "publishedAt"); // Định dạng ISO 8601 (VD: 2015-05-20T12:00:00Z)
+
+        // Unit time yy:m:d   h:m:s
+        String publishedAtRaw = strSafe(snippet, "publishedAt");
         long publishedAtEpoch = parsePublishedAt(publishedAtRaw);
 
-    // Tính "Tuổi của kênh" tính bằng giây từ lúc lập đến thời điểm hiện tại
         String epoch = String.valueOf(timeNow - publishedAtEpoch);
         String followerCount = strSafe(stats, "subscriberCount");
         String videoCount    = strSafe(stats, "videoCount");
 
-        // isVerify: "longUploadsStatus" = "allowed" chỉ dành cho kênh đã verify
-        // Đây là cách gần nhất API v3 cho phép — không có field "verified" trực tiếp
-        // "allowed"      → kênh đã verify (upload được video > 15 phút)
-        // "eligible"     → chưa verify
-        // "disallowed"   → bị hạn chế
-//        String longUploadStatus = strSafe(status, "longUploadsStatus");
-//        String isVerify = longUploadStatus.equals("allowed") ? "1" : "0";
 
-        // ── avgViewContentChannel: avg view các video content này trong kênh ─────
+        // Total view like comment of channel
         long totalView = 0, totalLike = 0, totalComment = 0;
-//                totalDuration = 0;
 
         for (Video v : listVideos) {
             totalView     += safeParse(v.getView_count());
             totalLike     += safeParse(v.getLike_count());
             totalComment  += safeParse(v.getComment_count());
-//            totalDuration += safeParse(v.getDuration());
         }
 
         int divisor = listVideos.isEmpty() ? 1 : listVideos.size();
         String avgViewContentChannel = String.valueOf(totalView    / divisor); // avg view content này
         String avgLike               = String.valueOf(totalLike    / divisor);
         String avgComment            = String.valueOf(totalComment / divisor);
-//        String avgDuration           = String.valueOf(totalDuration/ divisor);
 
 
         List<Long> timestamps = listVideos.stream()
                 .map(v -> (long) safeParse(v.getTimestamp()))
                 .filter(ts -> ts > 0)
                 .sorted()
-                .collect(Collectors.toList());
+                .toList();
 
         String frequency;
         if (timestamps.size() < 2) {
             frequency = "0";
         } else {
-            long span      = timestamps.get(timestamps.size() - 1) - timestamps.get(0);
+            long span      = timestamps.getLast() - timestamps.getFirst();
             long avgGapSec = span / (timestamps.size() - 1);
             frequency = String.valueOf(avgGapSec);
         }
@@ -283,15 +286,12 @@ public class MainHybird {
         System.out.println("[channel] " + channelName
                 + " | subs="    + followerCount
                 + " | videos="  + videoCount
-//                + " | verify="  + isVerify
                 + " | freq="    + frequency + "s"
                 + " | avgView=" + avgViewContentChannel);
 
         return new Channel(channelName, epoch, followerCount, videoCount,
                 avgViewContentChannel, avgLike, avgComment,
-//                avgDuration,
                 frequency,
-//                isVerify,
                  listVideos, avgViewContentChannel);
     }
 
@@ -301,9 +301,8 @@ public class MainHybird {
                                     List<String>  avgData) {
         try (FileWriter writer = new FileWriter(nameFile)) {
             writer.append("channel,epoch,followers,video_count,"
-                                                        //avg10Duration,
                     + "avg10View,avg10Like,avg10Comment,"
-                    + "frequency,"                     //avgDuration
+                    + "frequency,"
                     + "predict_view,predict_like,predict_comment,view\n");
 
 
@@ -313,30 +312,28 @@ public class MainHybird {
                 String predict_like = "";
                 String predict_comment = "";
 
-                try {
-                    predict_view = String.valueOf(Long.parseLong(avgData.get(0)) * Long.parseLong(c.getAvgView10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-                    predict_like = String.valueOf(Long.parseLong(avgData.get(1)) * Long.parseLong(c.getAvgLike10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-                    predict_comment = String.valueOf(Long.parseLong(avgData.get(2)) * Long.parseLong(c.getAvgComment10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-//                String predicted_duration = String.valueOf(Long.parseLong(avgData.get(3)) * Long.parseLong(c.getAvgDuration10Videos())/Long.parseLong(c.getChannel_follower_count()));
-                }
-                catch (NumberFormatException e) {
-                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                if(Integer.parseInt(c.playlist_count) < 10){
+                    System.err.println("[SKIP] Channel " + c.channel + "playlist Count < 10");
                     continue;
                 }
-                catch (ArithmeticException e){
-                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                if(Integer.parseInt(c.channel_follower_count) <= 50){
+                    System.err.println("[SKIP] Channel " + c.channel + "channel follow Count < 50");
                     continue;
-
                 }
-                catch (Exception e){
-                    System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
+                if(Integer.parseInt(c.avgView10Videos) == 0){
+                    System.err.println("[SKIP] Channel " + c.channel + "avg 10 ViewCount = 0");
+
                     continue;
-
                 }
 
-//                if(c.getVideos().size() < 10){
-//                    continue;
-//                }
+
+
+
+
+                predict_view = String.valueOf(Long.parseLong(avgData.get(0)) * Long.parseLong(c.getAvgView10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+                predict_like = String.valueOf(Long.parseLong(avgData.get(1)) * Long.parseLong(c.getAvgLike10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+                predict_comment = String.valueOf(Long.parseLong(avgData.get(2)) * Long.parseLong(c.getAvgComment10Videos()) / Long.parseLong(c.getChannel_follower_count()));
+
 
                 writer.append(csvEscape(c.channel)).append(",")
                         .append(c.epoch).append(",")
@@ -345,13 +342,7 @@ public class MainHybird {
                         .append(c.avgView10Videos).append(",")
                         .append(c.avgLike10Videos).append(",")
                         .append(c.avgComment10Videos).append(",")
-//                        .append(c.avgDuration10Videos).append(",")
                         .append(c.freequency).append(",")
-//                        .append(c.isChannelVerify).append(",")
-//                        .append(avgData.get(0)).append(",")
-//                        .append(avgData.get(1)).append(",")
-//                        .append(avgData.get(2)).append(",")
-//                        .append(avgData.get(3)).append(",")
                         .append(predict_view).append(",")
                         .append(predict_like).append(",")
                         .append(predict_comment).append(",")
@@ -378,7 +369,7 @@ public class MainHybird {
 
         if (channelUrl == null) return null;
 
-        // /channel/UCxxxx → trực tiếp, 0 quota
+        // /channel/id , 0 quota
         Matcher m = Pattern.compile("/channel/(UC[A-Za-z0-9_-]+)").matcher(channelUrl);
         if (m.find()) return m.group(1);
 
@@ -396,7 +387,7 @@ public class MainHybird {
                 return items.get(0).getAsJsonObject().get("id").getAsString();
         }
 
-        System.err.println("[WARN] Cannot resolve: " + channelUrl);
+        System.err.println("[ERROR] Cannot resolve: " + channelUrl);
         return null;
     }
 
@@ -411,7 +402,7 @@ public class MainHybird {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() == 429 || response.statusCode() == 403) {
-            System.err.println("[WARN] Rate limit, retry after 5s...");
+            System.err.println("[ERROR] Rate limit, retry after 5s...");
             Thread.sleep(5_000);
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         }
@@ -432,16 +423,6 @@ public class MainHybird {
         try {
             return Integer.parseInt(value.trim().replaceAll("[^0-9]", ""));
         } catch (NumberFormatException e) { return 0; }
-    }
-
-    private static long parseDuration(String iso) {
-        if (iso == null || iso.equals("P0D")) return 0;
-        long sec = 0;
-        String s = iso.replace("PT", "");
-        if (s.contains("H")) { sec += Long.parseLong(s.substring(0, s.indexOf('H'))) * 3600; s = s.substring(s.indexOf('H') + 1); }
-        if (s.contains("M")) { sec += Long.parseLong(s.substring(0, s.indexOf('M'))) * 60;   s = s.substring(s.indexOf('M') + 1); }
-        if (s.contains("S")) { sec += Long.parseLong(s.substring(0, s.indexOf('S'))); }
-        return sec;
     }
 
     private static long parsePublishedAt(String publishedAt) {
@@ -466,7 +447,7 @@ public class MainHybird {
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        String nameContent    = "Web Engineering";
+        String nameContent    = "Valorant";
         String nameFile    = nameContent + ".csv";
         int    numChannels = 500;
 
@@ -476,7 +457,6 @@ public class MainHybird {
         AtomicLong totalViews    = new AtomicLong(0);
         AtomicLong totalLikes    = new AtomicLong(0);
         AtomicLong totalComments = new AtomicLong(0);
-//        AtomicInteger totalDuration = new AtomicInteger(0);
         AtomicInteger totalVideos   = new AtomicInteger(0);
 
         ExecutorService executor = Executors.newFixedThreadPool(12);
@@ -492,21 +472,20 @@ public class MainHybird {
 
             CompletableFuture<Channel> future = CompletableFuture.supplyAsync(() -> {
                 try {
-                    // [yt-dlp] Bước 2: Dùng channelUrl trực tiếp — 0 quota, FIX bug --print
+                    // [yt-dlp]: Using channel urls to get video list  — 0 quota
                     ArrayList<String> videoUrls = getListVideosChannel(channelUrl, nameContent);
 
-                    // [API]   Bước 3: Stats video — 1 quota/batch
+                    // [API Youtube] : Stats video — 1 quota/50videos
                     ArrayList<Video> videos = getListDataVideo(videoUrls);
 
                     videos.forEach(v -> {
                         totalViews.addAndGet(safeParse(v.getView_count()));
                         totalLikes.addAndGet(safeParse(v.getLike_count()));
                         totalComments.addAndGet(safeParse(v.getComment_count()));
-//                        totalDuration.addAndGet(safeParse(v.getDuration()));
                     });
                     totalVideos.addAndGet(videos.size());
 
-                    // [API]   Bước 4: Stats kênh — 1 quota
+                    // [API] : Information of channel — 1 quota
                     return getDataChannel(channelUrl, videos);
 
                 } catch (Exception e) {
@@ -526,17 +505,28 @@ public class MainHybird {
         executor.shutdown();
 
         int total = Math.max(totalVideos.get(), 1);
+        if(totalViews.get() == 0){
+            System.err.println("[ERROR] total View = 0");
+            return;
+        }
+        if(totalLikes.get() == 0){
+            System.err.println("[ERROR] total Like = 0");
+            return;
+        }
+        if(totalComments.get() == 0){
+            System.err.println("[ERROR] total Comment = 0");
+            return;
+        }
         List<String> avgData = List.of(
                 String.valueOf(totalViews.get()    / total),
                 String.valueOf(totalLikes.get()    / total),
                 String.valueOf(totalComments.get() / total)
-//                String.valueOf(totalDuration.get() / total)
         );
 
+
+
         System.out.printf("%nAvg: views=%s likes=%s comments=%s ",
-//                        "duration=%s%n",
                 avgData.get(0), avgData.get(1), avgData.get(2));
-//                avgData.get(3));
 
         writeFileCSV(nameFile, listChannels, avgData);
     }

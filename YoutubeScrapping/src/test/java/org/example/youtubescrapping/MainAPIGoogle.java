@@ -13,7 +13,7 @@
 //
 //public class MainAPIGoogle {
 //
-//    private static final String API_KEY  = "";
+//    private static final String API_KEY  = "AIzaSyDcMNA6USWny26yGs24xXjRUdyyGd7PmWY";
 //    private static final String BASE_URL = "https://www.googleapis.com/youtube/v3";
 //    private static final Long timeNow = Instant.now().getEpochSecond();
 //

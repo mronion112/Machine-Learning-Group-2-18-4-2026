@@ -3,6 +3,7 @@ package org.example.youtubescrapping;
 import com.microsoft.playwright.*;
 
 import java.io.BufferedReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Array;
@@ -38,7 +39,7 @@ public class Main {
 //                coookieFile
         );
 
-        builder.redirectErrorStream(true);
+        builder.redirectErrorStream(false);
         Process process = builder.start();
 
 
@@ -92,14 +93,18 @@ public class Main {
                 "--flat-playlist",
                 "--skip-download",
                 "--print",
-//                |%(title)s|
+
+                "--sleep-interval", "2",
+                "--max-sleep-interval", "5",
+
+
                 "%(uploader)s"+delimiter+"%(webpage_url)s",
                 "--no-warnings"
 //                "--cookies",
 //                coookieFile
         );
 
-        builder.redirectErrorStream(true);
+        builder.redirectErrorStream(false);
         Process process = builder.start();
         BufferedReader rd = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
@@ -115,9 +120,9 @@ public class Main {
                 continue;
             }
 
-            if (!datas[0].equals(nameChannel) ) {
-                break;
-
+            if (!datas[0].trim().equalsIgnoreCase(nameChannel.trim())) {
+                System.out.println("SKIP : " + datas[0] + " != " + nameChannel);
+                continue;
             }
 
             if(listUsedUrl.contains(datas[1])){
@@ -130,7 +135,10 @@ public class Main {
                 System.out.println("ADD: " + datas[0] + " | " + datas[1] );
             }
         }
-
+        if(listVideoChannel.isEmpty()){
+            System.err.println("ERROR getListVideoChannel is empty method line : " + line  );
+            return listVideoChannel;
+        }
         return listVideoChannel;
     }
 
@@ -176,7 +184,7 @@ public class Main {
 //                coookieFile
         );
 
-        builder.redirectErrorStream(true);
+        builder.redirectErrorStream(false);
         Process process = builder.start();
 
         Set<String> ids = new HashSet<>();
@@ -201,6 +209,11 @@ public class Main {
         ProcessBuilder builder = new ProcessBuilder();
         builder.command(
                 "yt-dlp", urlChannel,
+
+                "--sleep-interval", "2",
+                "--max-sleep-interval", "5",
+
+
                 "--playlist-end", "10",
                 "--print", "%(channel)s" + delimiter + "%(epoch)s" + delimiter + "%(channel_is_verified)s" + delimiter +
                         "%(channel_follower_count)s" + delimiter + "%(title)s" + delimiter + "%(view_count)s" + delimiter +
@@ -210,11 +223,12 @@ public class Main {
 //                coookieFile
         );
 
-        builder.redirectErrorStream(true);
+        builder.redirectErrorStream(false);
         Process process = builder.start();
 
         String channelName = "", epoch = "", isChannelVerify = "", followerCount = "";
-        long totalView = 0, totalLike = 0, totalComment = 0, totalDuration = 0;
+        long totalView = 0, totalLike = 0, totalComment = 0;
+//                totalDuration = 0;
         long lastVideoTs = 0;
         int actualCount = 0;
 
@@ -225,6 +239,7 @@ public class Main {
                 String[] datas = line.split(delimiter);
                 if (datas.length < 10) {
                     System.err.println("[WARN] Unexpected line from getDataChannel: " + line);
+                    continue;
                 }
 
                 if (actualCount == 0) {
@@ -237,10 +252,10 @@ public class Main {
                 totalView += safeParse(datas[5]);
                 totalComment += safeParse(datas[6]);
                 totalLike += safeParse(datas[7]);
-                totalDuration += safeParse(datas[8]);
+//                totalDuration += safeParse(datas[8]);
 
-                if (actualCount == 9) {
-                    lastVideoTs = safeParse(datas[9]);
+                if (actualCount == 8) {   //9
+                    lastVideoTs = safeParse(datas[8]);  //9
                 }
 
                 actualCount++;
@@ -252,21 +267,32 @@ public class Main {
         String avgView = String.valueOf(totalView / divisor);
         String avgLike = String.valueOf(totalLike / divisor);
         String avgComment = String.valueOf(totalComment / divisor);
-        String avgDuration = String.valueOf(totalDuration / divisor);
+//        String avgDuration = String.valueOf(totalDuration / divisor);
 
         String frequency = (lastVideoTs == 0) ? "0" : String.valueOf(nowTime - lastVideoTs);
 
-        isChannelVerify = isChannelVerify.trim().equals("True") ? "0" : "1";
-        String playListCount = getVideoCount(urlChannel);
+        isChannelVerify = isChannelVerify.trim().equals("True") ? "1" : "0";
+        String playListCount = String.valueOf(177013);
+//                getVideoCount(urlChannel);
+
+        int count = 0;
+
+        for(Video video : listVideos) {
+            count += safeParse(video.getView_count());
+        }
+        String avgViewContentChannel = String.valueOf(count/listVideos.size());
+
+
         return new Channel(channelName, epoch, followerCount, playListCount,
-                avgView, avgLike, avgComment, avgDuration, frequency, isChannelVerify, listVideos);
+                avgView, avgLike, avgComment,
+//                avgDuration,
+                frequency, listVideos, avgViewContentChannel);
     }
 
 
     // channel | epoch | playlist_count ! channel_follower_count ||| view_count | comment_count | like_count
 
 //    Biến    Ý nghĩa
-//
 //    x1      Channel Follower Count
 //    x2      Epoch
 //    x3      Total Videos
@@ -291,9 +317,21 @@ public class Main {
     ArrayList<Video> listVideo = new ArrayList<>();
     String delimiter = "###";
 
+    if(listUrlVideo.isEmpty()) {
+        System.err.println("[WARN] getListDataVideo : Empty list url video");
+        return listVideo;
+    }
+
     List<String> command = new ArrayList<>(List.of(
             "yt-dlp",
-            "--print", "%(title)s"+delimiter+"%(view_count)s"+delimiter+"%(comment_count)s"+delimiter+"%(like_count)s"+delimiter+"%(duration)s"+delimiter+"%(timestamp)s",
+
+            "--sleep-interval", "2",
+            "--max-sleep-interval", "5",
+
+
+            "--print", "%(title)s"+delimiter+"%(view_count)s"+delimiter+"%(comment_count)s"+delimiter+"%(like_count)s" +
+//                                                                                                                    +delimiter+ "%(duration)s"+
+                                                                                                                    delimiter+"%(timestamp)s",
             "--no-warnings"
 //            "--cookies",
 //            coookieFile
@@ -301,29 +339,60 @@ public class Main {
     command.addAll(listUrlVideo);
 
     ProcessBuilder builder = new ProcessBuilder(command);
-    builder.redirectErrorStream(true);
+    builder.redirectErrorStream(false);
     Process process = builder.start();
 
     BufferedReader rb = new BufferedReader(new InputStreamReader(process.getInputStream()));
     String line;
     while ((line = rb.readLine()) != null) {
         if (line.length() < 2) continue;
-        String[] datas = line.split(delimiter, 6);
+        String[] datas = line.split(delimiter, 5);
 
-        if (datas.length < 6) {
+        if (datas.length < 5) {
             System.out.println("SKIP getListDataVideo line: " + line);
             continue;
         }
-        listVideo.add(new Video(datas[0], datas[1], datas[2], datas[3], datas[4], datas[5]));
+        listVideo.add(new Video(datas[0], datas[1], datas[2], datas[3], datas[4]));
     }
     return listVideo;
 }
 
+//    avgViews   avgLikes  avgComments  avgDuration
+
+    public static void writeFileCSV(String nameFile, List<Channel> listChannel, List<String> avgData){
+        try (FileWriter writer = new FileWriter(nameFile)) {
+                                                                                                                                                                //,avgDuration
+            writer.append("channel,epoch,followers,playlist_count,avg10View,avg10Like,avg10Comment," +
+//                    "avg10Duration," +
+                    "frequency,isVerify,avgView,avgLikes,avgComments\n");
+
+            for (Channel c : listChannel) {
+                writer.append(c.channel).append(",");
+                writer.append(c.epoch).append(",");
+                writer.append(c.channel_follower_count).append(",");
+                writer.append(c.playlist_count).append(",");
+                writer.append(c.avgView10Videos).append(",");
+                writer.append(c.avgLike10Videos).append(",");
+                writer.append(c.avgComment10Videos).append(",");
+//                writer.append(c.avgDuration10Videos).append(",");
+                writer.append(c.freequency).append(",");
+//                writer.append(c.isChannelVerify).append(",");
+                writer.append(avgData.get(0)).append(",");
+                writer.append(avgData.get(1)).append(",");
+                writer.append(avgData.get(2)).append("\n");
+//                writer.append(avgData.get(3)).append("\n");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main() throws IOException, InterruptedException {
 
-        String nameGame = "Resident Evil 9";
+        String nameGame = "Học làm bánh";
+        String nameFile = "Test1.csv";
         HashMap<String, String> listChannel = queryListChannel(nameGame, 50);
 
         int count = 1;
@@ -331,7 +400,7 @@ public class Main {
         AtomicInteger totalViews = new AtomicInteger(0);
         AtomicInteger totalLikes = new AtomicInteger(0);
         AtomicInteger totalComments = new AtomicInteger(0);
-        AtomicInteger totalDuration = new AtomicInteger(0);
+//        AtomicInteger totalDuration = new AtomicInteger(0);
 
         AtomicInteger totalVideos = new AtomicInteger(0);
 
@@ -353,7 +422,7 @@ public class Main {
                     listDataVideos.forEach(video -> {
                         totalViews.addAndGet(safeParse(video.getView_count()));
                         totalLikes.addAndGet(safeParse(video.getLike_count()));
-                        totalDuration.addAndGet(safeParse(video.getDuration()));
+//                        totalDuration.addAndGet(safeParse(video.getDuration()));
                         totalComments.addAndGet(safeParse(video.getComment_count()));
                     });
                     totalVideos.addAndGet(listDataVideos.size());
@@ -382,14 +451,28 @@ public class Main {
         System.out.println("Total Views : " + totalViews.get() +
                 "\nTotal Like : " + totalLikes.get() +
                 "\nTotal Comment : " + totalComments.get() +
-                "\nTotal Duration : " + totalDuration.get() +
+//                "\nTotal Duration : " + totalDuration.get() +
                 "\nTotal Videos : " + totalVideos.get());
 
-        System.out.println("Avg View : " + totalViews.get() / totalVideos.get() +
-                "\tAvg Like : " + totalLikes.get() / totalVideos.get() +
-                "\tAvg Comment : " + totalComments.get() / totalVideos.get() +
-                "\tAvg Duration : " + totalDuration.get() / totalVideos.get()
+        int avgViews = totalViews.get() / totalVideos.get();
+        int avgLikes = totalLikes.get() / totalVideos.get();
+        int avgComments = totalComments.get() / totalVideos.get();
+//        int avgDuration = totalDuration.get() / totalVideos.get();
+
+        System.out.println("Avg View : " + avgViews +
+                "\tAvg Like : " + avgLikes +
+                "\tAvg Comment : " + avgComments
+//                "\tAvg Duration : " + avgDuration
                 );
+
+        List<String> avgData = new ArrayList<>();
+        avgData.add(String.valueOf(avgViews));
+        avgData.add(String.valueOf(avgLikes));
+        avgData.add(String.valueOf(avgComments));
+//        avgData.add(String.valueOf(avgDuration));
+
+        writeFileCSV(nameFile, listChannels, avgData);
+
     }
 
 

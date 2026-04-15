@@ -24,13 +24,18 @@ public class Channel {
     String avgLike10Videos;
     String avgView10Videos;
     String avgComment10Videos;
-    String avgDuration10Videos;
+//    String avgDuration10Videos;
     String freequency;
-    String isChannelVerify;
+//    String isChannelVerify;
     ArrayList<Video> videos;
+    String avgViewContentChannel;
 
 
-    public Channel(String channel, String epoch, String channel_follower_count, String playlist_count, String avgView10Videos, String avgLike10Videos, String avgComment10Videos, String avgDuration10Videos, String freequency, String isChannelVerify, ArrayList<Video> videos) {
+    public Channel(String channel, String epoch, String channel_follower_count, String playlist_count, String avgView10Videos, String avgLike10Videos, String avgComment10Videos
+//            , String avgDuration10Videos
+            , String freequency,
+//                   String isChannelVerify,
+                   ArrayList<Video> videos, String avgViewContentChannel ) {
         this.epoch = epoch;
         this.channel = channel;
         this.channel_follower_count = channel_follower_count;
@@ -38,10 +43,11 @@ public class Channel {
         this.avgView10Videos = avgView10Videos;
         this.avgLike10Videos = avgLike10Videos;
         this.avgComment10Videos = avgComment10Videos;
-        this.avgDuration10Videos = avgDuration10Videos;
+//        this.avgDuration10Videos = avgDuration10Videos;
         this.freequency = freequency;
-        this.isChannelVerify = isChannelVerify;
+//        this.isChannelVerify = isChannelVerify;
         this.videos = videos;
+        this.avgViewContentChannel = avgViewContentChannel;
     }
 
     public String getchannel() {
@@ -100,13 +106,13 @@ public class Channel {
         this.avgComment10Videos = avgComment10Videos;
     }
 
-    public String getAvgDuration10Videos() {
-        return avgDuration10Videos;
-    }
-
-    public void setAvgDuration10Videos(String avgDuration10Videos) {
-        this.avgDuration10Videos = avgDuration10Videos;
-    }
+//    public String getAvgDuration10Videos() {
+//        return avgDuration10Videos;
+//    }
+//
+//    public void setAvgDuration10Videos(String avgDuration10Videos) {
+//        this.avgDuration10Videos = avgDuration10Videos;
+//    }
 
     public String getFreequency() {
         return freequency;
@@ -132,12 +138,20 @@ public class Channel {
         this.channel = channel;
     }
 
-    public String getIsChannelVerify() {
-        return isChannelVerify;
+//    public String getIsChannelVerify() {
+//        return isChannelVerify;
+//    }
+//
+//    public void setIsChannelVerify(String isChannelVerify) {
+//        this.isChannelVerify = isChannelVerify;
+//    }
+
+    public String getAvgViewContentChannel() {
+        return avgViewContentChannel;
     }
 
-    public void setIsChannelVerify(String isChannelVerify) {
-        this.isChannelVerify = isChannelVerify;
+    public void setAvgViewContentChannel(String avgViewContentChannel) {
+        this.avgViewContentChannel = avgViewContentChannel;
     }
 
     @Override
@@ -150,10 +164,11 @@ public class Channel {
                 ", avgLike10Videos='" + avgLike10Videos + '\'' +
                 ", avgView10Videos='" + avgView10Videos + '\'' +
                 ", avgComment10Videos='" + avgComment10Videos + '\'' +
-                ", avgDuration10Videos='" + avgDuration10Videos + '\'' +
+//                ", avgDuration10Videos='" + avgDuration10Videos + '\'' +
                 ", freequency='" + freequency + '\'' +
-                ", isChannelVerify='" + isChannelVerify + '\'' +
-                ", videos=" + videos +
+//                ", isChannelVerify='" + isChannelVerify + '\'' +
+                ", videos=" + videos + '\'' +
+                ", avgViewContentChannel='" + avgViewContentChannel + '\'' +
                 '}';
     }
 }

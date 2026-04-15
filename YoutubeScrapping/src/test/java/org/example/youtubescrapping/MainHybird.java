@@ -1,16 +1,30 @@
 package org.example.youtubescrapping;
 
-import com.google.gson.*;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
-import java.io.*;
-import java.net.*;
-import java.net.http.*;
+import java.io.BufferedReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.regex.*;
-import java.util.stream.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class MainHybird {
 
@@ -30,7 +44,7 @@ public class MainHybird {
 //    x11     Frequency
 //    x12     isChannelVerify
 
-    private static final String API_KEY  = "";
+    private static final String API_KEY  = "AIzaSyDxslhbqPIIOcapBi6qBG5yc8Ar4GSDI5E";
     private static final String BASE_URL = "https://www.googleapis.com/youtube/v3";
     private static final Long timeNow = Instant.now().getEpochSecond();
 
@@ -47,7 +61,7 @@ public class MainHybird {
         HashMap<String, String> listChannel = new HashMap<>();
         HashSet<String> seenUrl = new HashSet<>();
         String nameGameEncoded = nameGame.replace(" ", "+");
-        String searchUrl = "https://www.youtube.com/results?search_query=" + nameGameEncoded + "channel&sp=EgIQAg%3D%3D";
+        String searchUrl = "https://www.youtube.com/results?search_query=channel+" + nameGameEncoded + "&sp=EgIQAg%3D%3D";
 
         ProcessBuilder builder = new ProcessBuilder(
                 "yt-dlp",
@@ -244,8 +258,8 @@ public class MainHybird {
         // "allowed"      → kênh đã verify (upload được video > 15 phút)
         // "eligible"     → chưa verify
         // "disallowed"   → bị hạn chế
-        String longUploadStatus = strSafe(status, "longUploadsStatus");
-        String isVerify = longUploadStatus.equals("allowed") ? "1" : "0";
+//        String longUploadStatus = strSafe(status, "longUploadsStatus");
+//        String isVerify = longUploadStatus.equals("allowed") ? "1" : "0";
 
         // ── avgViewContentChannel: avg view các video content này trong kênh ─────
         long totalView = 0, totalLike = 0, totalComment = 0;
@@ -283,14 +297,16 @@ public class MainHybird {
         System.out.println("[channel] " + channelName
                 + " | subs="    + followerCount
                 + " | videos="  + videoCount
-                + " | verify="  + isVerify
+//                + " | verify="  + isVerify
                 + " | freq="    + frequency + "s"
                 + " | avgView=" + avgViewContentChannel);
 
         return new Channel(channelName, epoch, followerCount, videoCount,
                 avgViewContentChannel, avgLike, avgComment,
 //                avgDuration,
-                frequency, isVerify, listVideos, avgViewContentChannel);
+                frequency,
+//                isVerify,
+                 listVideos, avgViewContentChannel);
     }
 
 
@@ -301,7 +317,7 @@ public class MainHybird {
             writer.append("channel,epoch,followers,video_count,"
                                                         //avg10Duration,
                     + "avg10View,avg10Like,avg10Comment,"
-                    + "frequency,isVerify,"                     //avgDuration
+                    + "frequency,"                     //avgDuration
                     + "predict_view,predict_like,predict_comment,view\n");
 
 
@@ -312,10 +328,7 @@ public class MainHybird {
                 String predict_comment = "";
 
                 try {
-                    predict_view = String.valueOf(Long.parseLong(avgData.get(0)) * Long.parseLong(c.getAvgView10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-                    predict_like = String.valueOf(Long.parseLong(avgData.get(1)) * Long.parseLong(c.getAvgLike10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-                    predict_comment = String.valueOf(Long.parseLong(avgData.get(2)) * Long.parseLong(c.getAvgComment10Videos()) / Long.parseLong(c.getChannel_follower_count()));
-//                String predicted_duration = String.valueOf(Long.parseLong(avgData.get(3)) * Long.parseLong(c.getAvgDuration10Videos())/Long.parseLong(c.getChannel_follower_count()));
+                    String predicted_duration = String.valueOf(Long.parseLong(avgData.get(3)) * Long.parseLong(c.getAvgDuration10Videos())/Long.parseLong(c.getChannel_follower_count()));
                 }
                 catch (NumberFormatException e) {
                     System.out.println("ERROR add channel " + c.getChannel() + e.getMessage());
@@ -331,6 +344,11 @@ public class MainHybird {
                     continue;
 
                 }
+
+//                if(c.getVideos().size() < 10){
+//                    continue;
+//                }
+
                 writer.append(csvEscape(c.channel)).append(",")
                         .append(c.epoch).append(",")
                         .append(c.channel_follower_count).append(",")
@@ -340,7 +358,7 @@ public class MainHybird {
                         .append(c.avgComment10Videos).append(",")
 //                        .append(c.avgDuration10Videos).append(",")
                         .append(c.freequency).append(",")
-                        .append(c.isChannelVerify).append(",")
+//                        .append(c.isChannelVerify).append(",")
 //                        .append(avgData.get(0)).append(",")
 //                        .append(avgData.get(1)).append(",")
 //                        .append(avgData.get(2)).append(",")
@@ -459,11 +477,11 @@ public class MainHybird {
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        String nameGame    = "Genshin impact";
-        String nameFile    = nameGame + ".csv";
-        int    numChannels = 200;
+        String nameContent    = "Web Engineering";
+        String nameFile    = nameContent + ".csv";
+        int    numChannels = 500;
 
-        HashMap<String, String> channelMap = queryListChannel(nameGame, numChannels);
+        HashMap<String, String> channelMap = queryListChannel(nameContent, numChannels);
         System.out.println("Scraping " + channelMap.size() + " channels...");
 
         AtomicLong totalViews    = new AtomicLong(0);
@@ -486,7 +504,7 @@ public class MainHybird {
             CompletableFuture<Channel> future = CompletableFuture.supplyAsync(() -> {
                 try {
                     // [yt-dlp] Bước 2: Dùng channelUrl trực tiếp — 0 quota, FIX bug --print
-                    ArrayList<String> videoUrls = getListVideosChannel(channelUrl, nameGame);
+                    ArrayList<String> videoUrls = getListVideosChannel(channelUrl, nameContent);
 
                     // [API]   Bước 3: Stats video — 1 quota/batch
                     ArrayList<Video> videos = getListDataVideo(videoUrls);
