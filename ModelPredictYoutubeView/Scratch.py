@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd 
 import matplotlib.pyplot as plt
-from  sklearn.metrics import mean_squared_error
-from sklearn.linear_model import SGDRegressor, Ridge
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import r2_score
 
@@ -34,22 +32,23 @@ def calculateCostFunction(X: np.ndarray, theta: np.ndarray, Y: np.ndarray, lambd
     cost = (np.sum((hx - Y.flatten())**2)  + regularizationComponent ) / (2 * m) 
     return cost
 
-def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray, interation: int, learningRate: float, lambdaNumber):
+def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray, iteration: int, learningRate: float, lambdaNumber):
     m = len(X)
-    historyE = np.zeros(interation)
-    for i in range(interation):
+    historyE = np.zeros(iteration)
+    for i in range(iteration):
         hx = calculateHx(X, theta)
         gradientE = X.T.dot(hx - Y.flatten()) / m
         gradientE[1:] += (lambdaNumber / m) * theta[1:]
         theta -= learningRate * gradientE
         historyE[i] = calculateCostFunction(X, theta, Y, lambdaNumber)
+        print(historyE[i])
     return theta, historyE
 
-def drawHistoryE(historyE: np.ndarray, interation: int) -> None :
+def drawHistoryE(historyE: np.ndarray, iteration: int) -> None :
     plt.plot(range(len(historyE)), historyE, color='blue', label='CostFunction E')
-    plt.xlabel("Interation")
+    plt.xlabel("iteration")
     plt.ylabel("E")
-    plt.title("E and Interation")
+    plt.title("E and iteration")
     plt.grid(True)
     plt.legend()
     
@@ -72,17 +71,57 @@ def drawTest(hxTest: np.ndarray, YTest: np.ndarray )-> None:
     plt.grid(True)
     plt.legend()
 
-def drawMatLab(historyE: np.ndarray, interation: int, hx: np.ndarray, Y: np.ndarray, hxTest: np.ndarray, YTest: np.ndarray):
+def drawFeatureImportance(theta: np.ndarray, feature_names: list[str]) -> None:
+    importance = np.abs(theta[1:])
+    
+    sorted_idx = np.argsort(importance)[::-1]
+    sorted_importance = importance[sorted_idx]
+    sorted_features = np.array(feature_names)[sorted_idx]
+
+    plt.barh(range(len(sorted_importance)), sorted_importance, color='green')
+    plt.yticks(range(len(sorted_importance)), sorted_features)
+    plt.xlabel("Importance (|theta|)")
+    plt.ylabel("Features")
+    plt.title("Feature Importance (Horizontal)")
+    plt.gca().invert_yaxis() 
+    plt.grid(True)
+
+def drawViewDistribution(Y: np.ndarray) -> None:
+    mean_view = np.mean(Y)
+    
+    plt.scatter(range(len(Y)), Y, color='blue', label='View')
+
+
+    plt.axhline(y=mean_view, color='red', label=f'Mean = {mean_view:.2f}')
+    
+    plt.xlabel("Sample Index")
+    plt.ylabel("View")
+    plt.title("View Distribution vs Mean")
+    plt.legend()
+    plt.grid(True)
+
+def drawMatLab(historyE: np.ndarray, iteration: int, hx: np.ndarray, Y: np.ndarray, hxTest: np.ndarray, YTest: np.ndarray, theta: np.ndarray, featureName : list[str]):
     fig1 = plt.figure(1)
-    drawHistoryE(historyE, interation)
+    drawHistoryE(historyE, iteration)
     fig2 = plt.figure(2)
     drawHxAndY(hx, Y)
     fig3 = plt.figure(3)
     drawTest(hxTest, YTest)
+
+    fig4 = plt.figure(4)
+    drawFeatureImportance(theta, featureName)
+
+    fig5 = plt.figure(5)
+    drawViewDistribution(Y)
+
+
     plt.show()  
 
 if __name__ == "__main__":
     dataFile = readDataFile("Valorant.csv")
+    iteration = 100
+    learningRate = 0.01
+    lambdaNumber = 0.01
 
     X: np.ndarray
     Y: np.ndarray
@@ -93,7 +132,7 @@ if __name__ == "__main__":
 
     X = addBias1(X)
 
-    n = len(X)
+    n:int = len(X)
     XTrain = X[:n-50]
     YTrain = Y[:n-50]
 
@@ -104,16 +143,16 @@ if __name__ == "__main__":
 
     print(f"Initial Theta : {theta}")
 
-    interation = 10000
-    learningRate = 0.01
-    lambdaNumber = 0.01
 
-    theta, historyE = calculateTheta(XTrain, YTrain, theta, interation, learningRate, lambdaNumber)
+    theta, historyE = calculateTheta(XTrain, YTrain, theta, iteration, learningRate, lambdaNumber)
     hxFinal = calculateHx(XTrain, theta)
     hxTest = calculateHx(XTest, theta)
 
+    E = calculateCostFunction(XTrain, theta, YTrain, lambdaNumber)
+
     print(f"List final theta : {theta}")
-    print(f"The final costfunction E = {historyE[-1]}")
+    print(f"The final E with lambad = {historyE[-1]}")
+    print(f"The final E = {E}")
 
     r2_train = r2_score(YTrain, hxFinal)
     r2_test = r2_score(YTest, hxTest)
@@ -121,4 +160,9 @@ if __name__ == "__main__":
     print(f"R2 Train: {r2_train*100}")
     print(f"R2 Test: {r2_test*100}")
 
-    drawMatLab(historyE, interation, hxFinal, YTrain, hxTest, YTest)
+    feature_names = ["epoch", "followers", "video_count", "avg10View", 
+                 "avg10Like", "avg10Comment", "frequency", 
+                 "predict_view", "predict_like", "predict_comment"]
+
+
+    drawMatLab(historyE, iteration, hxFinal, YTrain, hxTest, YTest, theta, feature_names)
