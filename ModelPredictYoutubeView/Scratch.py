@@ -25,24 +25,33 @@ def calculateHx(X: np.ndarray, theta: np.ndarray) -> np.ndarray:
     hx = np.dot(X, theta)
     return hx
 
-def calculateCostFunction(X: np.ndarray, theta: np.ndarray, Y: np.ndarray, lambdaNumber) -> float:
+def calculateCostFunctionWithLambda(X: np.ndarray, theta: np.ndarray, 
+                                    Y: np.ndarray, lambdaNumber) -> float:
     m = len(X)
     hx = calculateHx(X, theta)
     regularizationComponent = lambdaNumber * np.sum(theta[1:]**2)
     cost = (np.sum((hx - Y.flatten())**2)  + regularizationComponent ) / (2 * m) 
     return cost
 
-def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray, iteration: int, learningRate: float, lambdaNumber):
+def calculateCostFunction(X: np.ndarray, theta: np.ndarray, Y: np.ndarray) -> float:
     m = len(X)
+    cost = np.sum((calculateHx(X, theta) - Y.flatten())**2) / (2 * m)
+    return cost
+
+def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray, 
+                   iteration: int, learningRate: float, lambdaNumber):
+    m = len(X)
+    historyELambda = np.zeros(iteration)
     historyE = np.zeros(iteration)
     for i in range(iteration):
         hx = calculateHx(X, theta)
         gradientE = X.T.dot(hx - Y.flatten()) / m
         gradientE[1:] += (lambdaNumber / m) * theta[1:]
         theta -= learningRate * gradientE
-        historyE[i] = calculateCostFunction(X, theta, Y, lambdaNumber)
+        historyE[i] = calculateCostFunction(X, theta, Y)
+        historyELambda[i] = calculateCostFunctionWithLambda(X, theta, Y, lambdaNumber)
         print(historyE[i])
-    return theta, historyE
+    return theta, historyELambda, historyE
 
 def drawHistoryE(historyE: np.ndarray, iteration: int) -> None :
     plt.plot(range(len(historyE)), historyE, color='blue', label='CostFunction E')
@@ -144,11 +153,11 @@ if __name__ == "__main__":
     print(f"Initial Theta : {theta}")
 
 
-    theta, historyE = calculateTheta(XTrain, YTrain, theta, iteration, learningRate, lambdaNumber)
+    theta, historyELambda, historyE = calculateTheta(XTrain, YTrain, theta, iteration, learningRate, lambdaNumber)
     hxFinal = calculateHx(XTrain, theta)
     hxTest = calculateHx(XTest, theta)
 
-    E = calculateCostFunction(XTrain, theta, YTrain, lambdaNumber)
+    E = calculateCostFunctionWithLambda(XTrain, theta, YTrain, lambdaNumber)
 
     print(f"List final theta : {theta}")
     print(f"The final E with lambad = {historyE[-1]}")

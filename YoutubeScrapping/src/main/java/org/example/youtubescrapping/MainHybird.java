@@ -473,7 +473,7 @@ public class MainHybird {
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        String nameContent    = "Dota 2";
+        String nameContent    = "Valorant";
         String nameFile    = nameContent + ".csv";
         int    numChannels = 300;
         int preventiveChannel = numChannels / 5;
