@@ -1,17 +1,38 @@
 package org.example.youtubescrapping;
 
-import com.google.gson.*;
-
-import java.io.*;
-import java.net.*;
-import java.net.http.*;
-import java.nio.charset.StandardCharsets;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.regex.*;
-import java.util.stream.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class MainHybird {
 
@@ -253,6 +274,7 @@ public class MainHybird {
         String videoCount    = strSafe(stats, "videoCount");
 
 
+
         // Total view like comment of channel
         long totalView = 0, totalLike = 0, totalComment = 0;
 
@@ -266,6 +288,10 @@ public class MainHybird {
         String avgViewContentChannel = String.valueOf(totalView    / divisor); // avg view content này
         String avgLike               = String.valueOf(totalLike    / divisor);
         String avgComment            = String.valueOf(totalComment / divisor);
+
+        if(Integer.parseInt(followerCount) <= 50 || Integer.parseInt(videoCount) <= 10 || Integer.parseInt(avgViewContentChannel) == 0){
+            return null;
+        }
 
 
         List<Long> timestamps = listVideos.stream()
@@ -312,19 +338,19 @@ public class MainHybird {
                 String predict_like = "";
                 String predict_comment = "";
 
-                if(Integer.parseInt(c.playlist_count) < 10){
-                    System.err.println("[SKIP] Channel " + c.channel + "playlist Count < 10");
-                    continue;
-                }
-                if(Integer.parseInt(c.channel_follower_count) <= 50){
-                    System.err.println("[SKIP] Channel " + c.channel + "channel follow Count < 50");
-                    continue;
-                }
-                if(Integer.parseInt(c.avgView10Videos) == 0){
-                    System.err.println("[SKIP] Channel " + c.channel + "avg 10 ViewCount = 0");
-
-                    continue;
-                }
+//                if(Integer.parseInt(c.playlist_count) < 10){
+//                    System.err.println("[SKIP] Channel " + c.channel + "playlist Count < 10");
+//                    continue;
+//                }
+//                if(Integer.parseInt(c.channel_follower_count) <= 50){
+//                    System.err.println("[SKIP] Channel " + c.channel + "channel follow Count < 50");
+//                    continue;
+//                }
+//                if(Integer.parseInt(c.avgView10Videos) == 0){
+//                    System.err.println("[SKIP] Channel " + c.channel + "avg 10 ViewCount = 0");
+//
+//                    continue;
+//                }
 
 
 
@@ -447,20 +473,26 @@ public class MainHybird {
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
-        String nameContent    = "Valorant";
+        String nameContent    = "Dota 2";
         String nameFile    = nameContent + ".csv";
-        int    numChannels = 500;
+        int    numChannels = 300;
+        int preventiveChannel = numChannels / 5;
 
-        HashMap<String, String> channelMap = queryListChannel(nameContent, numChannels);
+        System.out.println("Scrapping "+ numChannels + " channel and " + preventiveChannel +" channel prevent ... ");
+
+        HashMap<String, String> channelMap = queryListChannel(nameContent, numChannels + preventiveChannel);
         System.out.println("Scraping " + channelMap.size() + " channels...");
 
         AtomicLong totalViews    = new AtomicLong(0);
         AtomicLong totalLikes    = new AtomicLong(0);
         AtomicLong totalComments = new AtomicLong(0);
         AtomicInteger totalVideos   = new AtomicInteger(0);
+        AtomicInteger count = new AtomicInteger(0);
 
         ExecutorService executor = Executors.newFixedThreadPool(12);
         List<CompletableFuture<Channel>> futures = new ArrayList<>();
+
+        AtomicBoolean enough = new AtomicBoolean(false);
 
         int idx = 1;
         for (Map.Entry<String, String> entry : channelMap.entrySet()) {
@@ -471,11 +503,13 @@ public class MainHybird {
                     + " queuing: " + channelName + " | " + channelUrl);
 
             CompletableFuture<Channel> future = CompletableFuture.supplyAsync(() -> {
+                if (enough.get()) return null;
+
                 try {
-                    // [yt-dlp]: Using channel urls to get video list  — 0 quota
                     ArrayList<String> videoUrls = getListVideosChannel(channelUrl, nameContent);
 
-                    // [API Youtube] : Stats video — 1 quota/50videos
+                    if (enough.get()) return null;
+
                     ArrayList<Video> videos = getListDataVideo(videoUrls);
 
                     videos.forEach(v -> {
@@ -485,8 +519,20 @@ public class MainHybird {
                     });
                     totalVideos.addAndGet(videos.size());
 
-                    // [API] : Information of channel — 1 quota
-                    return getDataChannel(channelUrl, videos);
+                    if (enough.get()) return null;
+
+                    Channel channel = getDataChannel(channelUrl, videos);
+
+                    if (channel != null) {
+                        int current = count.incrementAndGet();
+//                        System.out.println("[COUNT] " + current + "/" + numChannels + " | " + channelName);
+                        if (current >= numChannels) {
+                            enough.set(true);
+                            System.out.println("[DONE] Enough " + numChannels + " channel");
+                        }
+                        return channel;
+                    }
+                    return null;
 
                 } catch (Exception e) {
                     System.err.println("[ERROR] " + channelName + ": " + e.getMessage());
@@ -498,12 +544,19 @@ public class MainHybird {
         }
 
         ArrayList<Channel> listChannels = futures.stream()
-                .map(CompletableFuture::join)
+                .map(f -> {
+                    try {
+                        return f.get(90, TimeUnit.SECONDS);
+                    } catch (Exception e) {
+                        f.cancel(true);
+                        return null;
+                    }
+                })
                 .filter(Objects::nonNull)
+                .limit(numChannels)
                 .collect(Collectors.toCollection(ArrayList::new));
 
         executor.shutdown();
-
         int total = Math.max(totalVideos.get(), 1);
         if(totalViews.get() == 0){
             System.err.println("[ERROR] total View = 0");
