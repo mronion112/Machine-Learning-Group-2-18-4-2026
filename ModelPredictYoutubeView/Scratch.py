@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd 
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import r2_score
 
 def readDataFile(filePath:str) -> pd.DataFrame:
     dataFile = pd.read_csv("data/"+filePath)
@@ -52,6 +51,23 @@ def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray,
         historyELambda[i] = calculateCostFunctionWithLambda(X, theta, Y, lambdaNumber)
         print(f"{i}/{iteration} : {historyE[i]}")
     return theta, historyELambda, historyE
+
+def calculateR2(Y: np.ndarray, hx: np.ndarray) -> float:
+    Y = Y.flatten()
+    hx = hx.flatten()
+    
+    y_mean = np.mean(Y)
+    
+    ss_res = np.sum((Y - hx) ** 2)
+    
+    ss_tot = np.sum((Y - y_mean) ** 2)
+    
+    if ss_tot == 0:
+        return 0.0
+    
+    r2 = 1 - (ss_res / ss_tot)
+    
+    return r2
 
 def drawHistoryE(historyE: np.ndarray, iteration: int) -> None :
     plt.plot(range(len(historyE)), historyE, color='blue', label='CostFunction E')
@@ -163,8 +179,8 @@ if __name__ == "__main__":
     print(f"The final E with lambad = {historyE[-1]}")
     print(f"The final E = {E}")
 
-    r2_train = r2_score(YTrain, hxFinal)
-    r2_test = r2_score(YTest, hxTest)
+    r2_train = calculateR2(YTrain, hxFinal)
+    r2_test = calculateR2(YTest, hxTest)
 
     print(f"R2 Train: {r2_train*100}")
     print(f"R2 Test: {r2_test*100}")
