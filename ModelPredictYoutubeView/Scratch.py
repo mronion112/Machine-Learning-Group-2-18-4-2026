@@ -50,7 +50,7 @@ def calculateTheta(X: np.ndarray, Y: np.ndarray, theta: np.ndarray,
         theta -= learningRate * gradientE
         historyE[i] = calculateCostFunction(X, theta, Y)
         historyELambda[i] = calculateCostFunctionWithLambda(X, theta, Y, lambdaNumber)
-        print(historyE[i])
+        print(f"{i}/{iteration} : {historyE[i]}")
     return theta, historyELambda, historyE
 
 def drawHistoryE(historyE: np.ndarray, iteration: int) -> None :
@@ -128,8 +128,8 @@ def drawMatLab(historyE: np.ndarray, iteration: int, hx: np.ndarray, Y: np.ndarr
 
 if __name__ == "__main__":
     dataFile = readDataFile("Valorant.csv")
-    iteration = 100
-    learningRate = 0.01
+    iteration = 2000000
+    learningRate = 0.000001
     lambdaNumber = 0.01
 
     X: np.ndarray
